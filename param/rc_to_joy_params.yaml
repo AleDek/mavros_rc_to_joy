@@ -1,0 +1,9 @@
+rc_to_joy:
+  ch_to_axes:      [1,2,3,4]
+  reverse_axes:    [1,1,1,1]
+  ch_to_buttons:   [5,6]
+  reverse_buttons: [-1,-1]
+  pwm_max: 2000
+  pwm_min: 1000
+  pwm_deadzone: 2
+  
