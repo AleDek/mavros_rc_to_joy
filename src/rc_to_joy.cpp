@@ -19,7 +19,8 @@ class Rc_To_Joy {
         void rc_cb( mavros_msgs::RCInConstPtr  data);
         void data_publisher();
         void load_params();
-        double to_unit(int pwm);
+        double to_unit_axes(int pwm);
+        double to_unit_buttons(int pwm);
 
 		ros::NodeHandle _nh;
 		ros::Subscriber _rc_sub;
@@ -39,11 +40,13 @@ class Rc_To_Joy {
         std::vector<double> _axes_dir;
         std::vector<int> _map_to_button;
         std::vector<double> _button_dir;
+        std::vector<double> _button_nstates;
         int _pwm_max;
         int _pwm_min;
         int _pwm_deadzone;
-        double _pwm_mid;
-        double _pwm_delta;
+        double _pwm_mid;   // middle point
+        double _pwm_delta; // half of range
+        double _pwm_range; // min to max
 
         
 };
@@ -64,6 +67,7 @@ void Rc_To_Joy::load_params(){
     }
     _pwm_mid = (_pwm_max + _pwm_min)/2;
     _pwm_delta = (_pwm_max - _pwm_min)/2;
+    _pwm_range = (_pwm_max - _pwm_min);
 
     if( !_nh.getParam("/rc_to_joy/ch_to_axes", _map_to_axes) ){
         ROS_ERROR("Failed to get parameter[ch_to_axes] from server.");
@@ -97,11 +101,22 @@ void Rc_To_Joy::load_params(){
         _button_dir.resize(_N_buttons);
         for(int i = 0;i< _N_buttons; i++) _button_dir.push_back(1);
     }
-    std::stringstream ss2;
+
+    if( !_nh.getParam("/rc_to_joy/nstates_buttons", _button_nstates) ){
+        ROS_ERROR("Failed to get parameter[nstates_buttons] from server.");
+        _button_nstates = {2, 2};
+    }
+    if(_button_nstates.size() != _N_buttons){
+        _button_nstates.resize(_N_buttons);
+        for(int i = 0;i< _N_buttons; i++) _button_nstates.push_back(2);
+    }
+    std::stringstream ss2, ss3;
     for(int i = 0;i< _map_to_button.size(); i++){   
         ss2 << _button_dir[i]*_map_to_button[i] <<" ";
+        ss3 << _button_nstates[i]<<" ";
     }
     ROS_INFO("buttons are channels [ %s]",ss2.str().c_str()); //DEBUG
+    ROS_INFO("buttons have nstates [ %s]",ss3.str().c_str()); //DEBUG
 }
 
 Rc_To_Joy::Rc_To_Joy() {
@@ -128,12 +143,20 @@ void Rc_To_Joy::rc_cb( mavros_msgs::RCInConstPtr  data) {
 
 }
 
-double Rc_To_Joy::to_unit(int pwm){
+double Rc_To_Joy::to_unit_axes(int pwm){
     if(pwm>_pwm_max) pwm = _pwm_max;
     else if(pwm < _pwm_min) pwm =_pwm_min;
     else if(pwm < _pwm_mid+_pwm_deadzone && pwm > _pwm_mid-_pwm_deadzone) pwm =_pwm_mid;
 
     return (pwm -_pwm_mid)/_pwm_delta;
+}
+
+double Rc_To_Joy::to_unit_buttons(int pwm){
+    if(pwm>_pwm_max) pwm = _pwm_max;
+    else if(pwm < _pwm_min) pwm =_pwm_min;
+    //else if(pwm < _pwm_mid+_pwm_deadzone && pwm > _pwm_mid-_pwm_deadzone) pwm =_pwm_mid;
+
+    return (pwm -_pwm_min)/_pwm_range;
 }
 
 void Rc_To_Joy::data_publisher(){
@@ -159,11 +182,17 @@ void Rc_To_Joy::data_publisher(){
         if(change){
             joy_msg.header.stamp = ros::Time::now();
             for(int i = 0;i< _N_axes;i++){
-               joy_msg.axes[i] = _axes_dir[i]*to_unit( _old_pwm[_map_to_axes[i]-1]);
+                joy_msg.axes[i] = _axes_dir[i]*to_unit_axes( _old_pwm[_map_to_axes[i]-1]);
             }
+            //std::cout<<"unit button  : ";
             for(int i = 0;i< _N_buttons;i++){
-               joy_msg.buttons[i] = _button_dir[i]*to_unit( _old_pwm[_map_to_button[i]-1]);
+                if(_button_dir[i]>0.0)
+                    joy_msg.buttons[i] = round( (_button_nstates[i]-1.0)*to_unit_buttons( _old_pwm[_map_to_button[i]-1]));
+                else
+                    joy_msg.buttons[i] = round((_button_nstates[i]-1.0)*(1.0 - to_unit_buttons( _old_pwm[_map_to_button[i]-1])));
+                //std::cout << (_button_nstates[i]-1.0)*to_unit_buttons( _old_pwm[_map_to_button[i]-1]) <<" ";
             }
+            //std::cout<<endl;
             _joy_pub.publish(joy_msg);
         }
 
