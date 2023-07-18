@@ -1,7 +1,8 @@
 <?xml version="1.0"?>
 <launch>
-
+    <arg name="out" default="screen" /> 
+    
     <rosparam file="$(find mavros_rc_to_joy)/param/rc_to_joy_params.yaml" command="load" />
-    <node pkg="mavros_rc_to_joy" type="rc_to_joy" name="rc_to_joy" output="screen" />
+    <node pkg="mavros_rc_to_joy" type="rc_to_joy" name="rc_to_joy" output="$(arg out)" />
    
 </launch>
